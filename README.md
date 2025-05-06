@@ -64,12 +64,17 @@ provider "aws" {
     region = var.aws_region
 }
 ```
-**2. `variables.tf`**
+**2. `variables.tf`** - Controls which region Terrform will create resource And Only allows string values (like `"dev"`,`"stage"`, or `"prod"`)
 ```
 variable "aws_region" {
-    description = "AWS Region"
-    type        = string
-    default     = "us-east-1"
+  description = "AWS region"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "environment" {
+  description = "Environment name (dev, stage, prod)"
+  type        = string
 }
 ```
 
@@ -124,3 +129,5 @@ output "environment_bucket_name" {
   value       = aws_s3_bucket.env_bucket.id
 }
 ```
+
+## Step 2: Commands to Run
