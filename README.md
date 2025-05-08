@@ -42,29 +42,74 @@ In this lab, I'll walk you through How Large Organizations deploy infrastructure
 **In this lab, I'm going to use Single set of `.tf` files as I will use WORKSPACES to handle multiple environments dynamically.**
 
 ```
-06-Terraform-AWS---Multi-Environment-with-Workspaces/
-├── main.tf
-├── provider.tf
-├── variables.tf
+06-Terraform-AWS---Multi-Environment-with-Workspaces-and-Remote-State/
 ├── backend.tf
+├── backend-dev.hcl
+├── backend-stage.hcl
+├── backend-prod.hcl
+├── main.tf
 ├── outputs.tf
+├── provider.tf
 ├── terraform.tfvars
+├── variables.tf
 └── README.md
 ```
 
-## Step 1: Files to Create
-
+## backend.tf
 ```
-touch main.tf provider.tf variables.tf backend.tf outputs.tf terraform.tfvars
+terraform {
+    backend "s3" {}
+}
+```
+**Explaination:**
+- Here I'm defining the backend type (s3) for storing state.
+- I'm leaving the details (bucket, key etc.) empty here, because I'll pass them via external files (-backend-config) when running `terraform init`.
+- This way, I'm avoiding hardcoding the values, so that it works across all environments.
+
+## backend-dev.hcl
+```
+bucket         = "terraform-bootstrap-pro-lab"
+key            = "projects/sample-app/dev/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "terraform-lock-pro-lab"
+encrypt        = true
+```
+**Explaination:**
+- Here I'm telling terraform where to store the **state file** (`terraform.tfstate`) for the `dev` environment.
+- It will use the previously bootstrapped s3 bucket ("terraform-bootstrap-pro-lab")
+- `key` -> acts like a **Folder Path** inside the S3 bucket.
+- `dynamodb_table` -> enables **state locking** to prevent team conficts.
+- I'll create similar `.hcl` files for `stage` & `prod`.
+
+## backend-stage.hcl
+```
+bucket         = "terraform-bootstrap-pro-lab"
+key            = "projects/sample-app/stage/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "terraform-lock-pro-lab"
+encrypt        = true
 ```
 
-**1. `provider.tf`**
+## backend-prod.hcl
+```
+bucket         = "terraform-bootstrap-pro-lab"
+key            = "projects/sample-app/prod/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "terraform-lock-pro-lab"
+encrypt        = true
+```
+
+## provider.tf
 ```
 provider "aws" {
     region = var.aws_region
 }
 ```
-**2. `variables.tf`** - Controls which region Terrform will create resource And Only allows string values (like `"dev"`,`"stage"`, or `"prod"`)
+**Explaination:**
+- This tell terraform which cloud provider to talk to. (AWS in this case)
+- I'm using a variable (`var.aws_region`) for flexibility.
+
+## variables.tf
 ```
 variable "aws_region" {
   description = "AWS region"
@@ -77,34 +122,23 @@ variable "environment" {
   type        = string
 }
 ```
+**Explaination:**
+- Here I've defined the variables Terraform will use.
+- I've hardcoded the region here but I'll **pass environment name** at *runtime*.
 
-**3. `terraform.tfvars`** - We'll only set the AWS Region here. `environment` will be handled automatically from the workspace name. I'll show you how!
-
+## terraform.tfvars
 ```
 aws_region = "us-east-1"
 ```
+**Explaination:**
+- I'm passing the default value for this region.
+- As we know, Terraform automatically loads this file.
 
-**4. `backend.tf`**
-```
-terraform {
-  backend "s3" {
-    bucket         = "terraform-bootstrap-pro-lab"
-    key            = "projects/sample-app/${terraform.workspace}/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-lock-pro-lab"
-    encrypt        = true
-  }
-}
-```
-**WHAT & WHY?**
-- `${terraform.workspace}` is automatically injected. Terraform automatically replaces this with the current workspace name (like dev, stage, prod).
-- So, dev/stage/prod will have **separate state files** like:
-    - `projects/sample-app/dev/terraform.tfstate`
-    - `projects/sample-app/stage/terraform.tfstate`
-    - `projects/sample-app/prod/terraform.tfstate`
-
-**5. `main.tf`**
-I'll create different S3 buckets for each environement. And the bucket names will be different for each workspace to avoid collisions.
+## main.tf
+**Explaination:**
+- I'm going to create a **unique S3 bucket** per environment.
+- Also, I'm going to use the **resource block** `random_integer` to avoid name conflicts.
+- I'll apply environment-specific tags (As a good practice).
 
 ```
 resource "random_integer" "suffix" {
@@ -113,21 +147,76 @@ resource "random_integer" "suffix" {
 }
 
 resource "aws_s3_bucket" "env_bucket" {
-  bucket = "sample-app-${terraform.workspace}-pro-${random_integer.suffix.result}"
+  bucket = "sample-app-${var.environment}-pro-${random_integer.suffix.result}"
 
   tags = {
-    Name        = "SampleApp-${terraform.workspace}-Bucket"
-    Environment = terraform.workspace
+    Name        = "SampleApp-${var.environment}-Bucket"
+    Environment = var.environment
   }
 }
 ```
 
-**6. `outputs.tf`**
+## outputs.tf
+**Explaination:**
+- Now, I'm going to print the created bucket name after `terraform apply`.
+- The value will be based on the **resource type and resource name** from `main.tf` file.
 ```
 output "environment_bucket_name" {
-  description = "The name of the environment-specific S3 bucket"
-  value       = aws_s3_bucket.env_bucket.id
+    description = "The name of the created S3 bucket"
+    value       = aws_s3_bucket.env_bucket.id
 }
 ```
 
-## Step 2: Commands to Run
+## Let's Run this Lab
+
+1. If I run `terraform init`:
+![alt text](image.png)
+
+    > I'm being asked to enter the value for S3 bucket. However, I've already passed these details in the backend-dev/prod/stage.hcl files. So, I need to call the file (backend-dev.hcl or backend-stage.hcl or backend-prod.hcl) while initializing terraform.
+
+    **Let's try again!!**
+
+2. Let's initialize but with a modification.
+
+    `terraform init -backend-config=backend-dev.hcl`
+
+    ![alt text](image-1.png)
+    > This is now successfully initialized. So, We're good for next steps.
+
+3. Now, I'm going to create the `dev` workspace:
+    `terraform workspace new dev`
+    ![alt text](image-2.png)
+    >We can also see the path in S3.
+
+    ![alt text](image-3.png)
+4. Let's now select the `dev` workspace so that we can create the new S3 bucket inside that environment.
+    ![alt text](image-4.png)
+
+5. Now, Let's run the `terraform plan` command:
+
+    `terraform plan -out=tfplan`
+
+    > It will ask to enter a value for the Environment name (dev, stage or prod). Let's put `dev` and enter.
+
+    ![alt text](image-5.png)
+
+    > As We can see, it has created a terraform plan and is available in the tfplan file.
+
+6. Let's now apply this file.
+
+    `terraform apply tfplan`
+
+    ![alt text](image-6.png)
+
+    > Awesome!! I can now see the apply was successful and the terraform bucket (`sample-app-dev-pro-5779) is also created by validating the AWS Account.
+
+    ![alt text](image-7.png)
+
+
+## Let's now Move to **Staging** Environment and create the same:
+
+1. Let's initialize.
+
+    `terraform init -backend-config=backend-stage.hcl`
+
+    

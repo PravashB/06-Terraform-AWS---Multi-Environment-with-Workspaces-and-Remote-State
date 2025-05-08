@@ -4,7 +4,7 @@ resource "random_integer" "suffix" {
 }
 
 resource "aws_s3_bucket" "env_bucket" {
-  bucket = "sample-app-${var.environment}-pravash-${random_integer.suffix.result}"
+  bucket = "sample-app-${var.environment}-pro-${random_integer.suffix.result}"
 
   tags = {
     Name        = "SampleApp-${var.environment}-Bucket"
