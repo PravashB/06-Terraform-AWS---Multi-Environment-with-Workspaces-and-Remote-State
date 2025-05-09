@@ -206,11 +206,11 @@ output "environment_bucket_name" {
 
     `terraform apply tfplan`
 
-    ![alt text](image-6.png)
+    ![alt text](image-8.png)
 
     > Awesome!! I can now see the apply was successful and the terraform bucket (`sample-app-dev-pro-5779) is also created by validating the AWS Account.
 
-    ![alt text](image-7.png)
+    ![alt text](image-9.png)
 
 
 ## Let's now Move to **Staging** Environment and create the same:
@@ -219,4 +219,6 @@ output "environment_bucket_name" {
 
     `terraform init -backend-config=backend-stage.hcl`
 
-    
+    ![alt text](image-10.png)
+
+    > OOPS!! We faced this error. We'll understand what is this error and how can we fix this?
